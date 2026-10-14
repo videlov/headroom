@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "title": "Headroom 2.0.0",
+  "description": "The menu bar shows when the numbers aren't current, the popup explains problems in plain words, the session cookie lives in the Keychain, and ⌘U works without Accessibility permission.",
+  "buttons": [
+    {
+      "label": "Download",
+      "url": "https://github.com/videlov/headroom/releases/latest/download/Headroom.dmg",
+      "style": "primary"
+    }
+  ]
+}
