@@ -294,8 +294,9 @@ let states: [(MenuBarState, String)] = [
 ]
 
 @MainActor func menuBarScreenshot(_ theme: Theme) {
-    let cell: CGFloat = 132, captionHeight: CGFloat = 30, gap: CGFloat = 8, bottom: CGFloat = 12
-    let size = CGSize(width: cell * CGFloat(states.count), height: menuBarHeight + gap + captionHeight + bottom)
+    let cell: CGFloat = 132, top: CGFloat = 12, gap: CGFloat = 8, captionHeight: CGFloat = 30, bottom: CGFloat = 12
+    let size = CGSize(width: cell * CGFloat(states.count),
+                      height: top + menuBarHeight + gap + captionHeight + bottom)
     let ctx = context(size)
     drawWallpaper(ctx, size, theme)
     let paragraph = NSMutableParagraphStyle()
@@ -303,7 +304,7 @@ let states: [(MenuBarState, String)] = [
     for (index, (state, caption)) in states.enumerated() {
         let item = menuBarItem(state, theme)
         let midX = cell * (CGFloat(index) + 0.5)
-        let midY = size.height - menuBarHeight / 2
+        let midY = size.height - top - menuBarHeight / 2
         draw(item, ctx, at: CGPoint(x: midX - item.size.width / 2, y: midY - item.size.height / 2))
         withAppKit(ctx) {
             NSAttributedString(string: caption, attributes: [
