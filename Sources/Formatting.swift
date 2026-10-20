@@ -1,6 +1,7 @@
 import Foundation
 
-/// Date and time text for the popup. The formatters are created once.
+/// Date, time and money text for the popup and the menu bar. The date formatters are
+/// created once.
 enum Format {
     /// "18:03", in the system's time style.
     static func time(_ date: Date) -> String {
@@ -15,6 +16,34 @@ enum Format {
     /// "Oct 15".
     static func monthDay(_ date: Date) -> String {
         monthDayFormatter.string(from: date)
+    }
+
+    /// "2d 5h", "11h 20m" or "45m" until `date`, rounded up to the minute; at least "1m".
+    static func countdown(to date: Date, now: Date = Date()) -> String {
+        let minutes = max(1, Int((date.timeIntervalSince(now) / 60).rounded(.up)))
+        let (d, h, m) = (minutes / 1440, minutes % 1440 / 60, minutes % 60)
+        if d > 0 { return h > 0 ? "\(d)d \(h)h" : "\(d)d" }
+        if h > 0 { return m > 0 ? "\(h)h \(m)m" : "\(h)h" }
+        return "\(m)m"
+    }
+
+    /// "$4.64", or "EUR 4.64" for other currencies.
+    static func money(_ minor: Int, currency: String) -> String {
+        let value = Double(minor) / 100
+        return currency == "USD"
+            ? String(format: "$%.2f", value)
+            : String(format: "%@ %.2f", currency, value)
+    }
+
+    /// "€4.64": the currency's symbol where it has one, for the menu bar.
+    static func shortMoney(_ minor: Int, currency: String) -> String {
+        let amount = String(format: "%.2f", Double(minor) / 100)
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currency
+        let symbol = formatter.currencySymbol ?? currency
+        return symbol == currency ? "\(currency) \(amount)" : symbol + amount
     }
 
     /// "just now", "5 mins ago", "2 hours ago", "1 day ago".

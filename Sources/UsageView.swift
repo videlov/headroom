@@ -55,9 +55,6 @@ struct UsageView: View {
                 guard value > 0 else { return }
                 measuredHeight = value
             }
-            .onAppear {
-                cookieInput = usage.cookie
-            }
             .onChange(of: showingSettings) { isOpen in
                 guard isOpen else { return }
                 // Opening Settings scrolls to its end, so the last options are in view.
@@ -113,7 +110,7 @@ struct UsageView: View {
                 lastUpdatedRow
             }
 
-            Button(showingCookieInput ? "Hide Cookie" : "Session Cookie") {
+            Button(showingCookieInput ? "Hide Session Cookie" : "Session Cookie") {
                 showingCookieInput.toggle()
             }
             .buttonStyle(.borderless)
@@ -168,13 +165,13 @@ private struct ProblemNotice: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(message)
+            Text(problem.message(dataTime: dataTime))
                 .font(.caption)
                 .foregroundColor(.orange)
                 .fixedSize(horizontal: false, vertical: true)
             if problem == .cookieRejected, let updateCookie {
                 Button(action: updateCookie) {
-                    Text("Update cookie →")
+                    Text("Update session cookie →")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.accentColor)
                 }
@@ -182,20 +179,6 @@ private struct ProblemNotice: View {
             }
         }
         .padding(.bottom, 8)
-    }
-
-    private var message: String {
-        let showing = dataTime.map { " Showing data from \(Format.time($0))." } ?? ""
-        switch problem {
-        case .cookieRejected:
-            return "claude.ai no longer accepts your session cookie. Copy a fresh one from claude.ai."
-        case .rateLimited(let until):
-            return "claude.ai is limiting requests. Trying again at \(Format.time(until))." + showing
-        case .unreachable:
-            return "Can't reach claude.ai." + showing
-        case .failed(let sentence):
-            return sentence + showing
-        }
     }
 }
 
@@ -292,6 +275,12 @@ private struct ExtraUsageRow: View {
             HStack {
                 Text("Extra usage")
                     .font(.subheadline)
+                // Switched off on claude.ai: the spend stays, but nothing more is charged.
+                if !extra.isEnabled {
+                    Text("off")
+                        .font(.caption)
+                        .foregroundColor(Color.secondaryText)
+                }
                 Spacer()
                 Button(action: { NSWorkspace.shared.open(AppInfo.usageSettingsURL) }) {
                     Text("Manage →")
@@ -304,7 +293,7 @@ private struct ExtraUsageRow: View {
             // Spend against the monthly limit, only when there's actual spend.
             if usage.hasCreditUsage {
                 if extra.limitMinor > 0 {
-                    LimitBar(value: min(fraction, 1.0), color: .usage(fraction))
+                    LimitBar(value: min(fraction, 1.0), color: extra.isEnabled ? .usage(fraction) : .gray)
                 }
                 HStack {
                     Text(extra.limitMinor > 0
@@ -313,8 +302,8 @@ private struct ExtraUsageRow: View {
                         .font(.caption)
                         .foregroundColor(Color.secondaryText)
                     Spacer()
-                    if let resetsAt = extra.resetsAt {
-                        Text("Resets \(Format.monthDay(resetsAt))")
+                    if let until = extra.disabledUntil, until > Date() {
+                        Text("Off until \(Format.monthDay(until))")
                             .font(.caption)
                             .foregroundColor(Color.secondaryText)
                     }
@@ -331,9 +320,6 @@ private struct ExtraUsageRow: View {
     }
 
     private func money(_ minor: Int) -> String {
-        let value = Double(minor) / 100
-        return usage.currency == "USD"
-            ? String(format: "$%.2f", value)
-            : String(format: "%@ %.2f", usage.currency, value)
+        Format.money(minor, currency: usage.currency)
     }
 }

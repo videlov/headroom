@@ -16,7 +16,7 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 for arch in arm64 x86_64; do
     swiftc -parse-as-library -O -swift-version 5 \
-        -target "$arch-apple-macos12.0" \
+        -target "$arch-apple-macos13.0" \
         -o "build/Headroom-$arch" \
         Sources/*.swift
 done

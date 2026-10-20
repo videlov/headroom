@@ -13,6 +13,25 @@ struct StatusComponent: Identifiable, Equatable {
     let id: String
     let name: String
     let status: String          // operational | degraded_performance | partial_outage | major_outage | under_maintenance
+
+    /// What this status adds to the overall indicator.
+    var indicator: StatusIndicator {
+        switch status {
+        case "under_maintenance", "degraded_performance": return .minor
+        case "partial_outage": return .major
+        case "major_outage": return .critical
+        default: return .operational
+        }
+    }
+}
+
+/// How bad things are, mildest first. The raw values are status.claude.com's indicator names.
+enum StatusIndicator: String, CaseIterable, Comparable {
+    case operational = "none", minor, major, critical
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        allCases.firstIndex(of: lhs)! < allCases.firstIndex(of: rhs)!
+    }
 }
 
 /// Claude's service status from status.claude.com, narrowed to the services the user tracks.
@@ -26,7 +45,8 @@ final class StatusStore: ObservableObject {
     @Published private(set) var hasFetched = false
 
     private let prefs: Preferences
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let notify: (_ title: String, _ body: String) -> Void
 
     /// Shown until the first fetch. Claude for Government isn't tracked by default.
     static let defaultComponents = [
@@ -38,8 +58,12 @@ final class StatusStore: ObservableObject {
         StatusComponent(id: "c-claude-gov", name: "Claude for Government", status: "operational"),
     ]
 
-    init(prefs: Preferences) {
+    /// `defaults` and `notify` replace UserDefaults.standard and the notifications in tests.
+    init(prefs: Preferences, defaults: UserDefaults = .standard,
+         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:)) {
         self.prefs = prefs
+        self.defaults = defaults
+        self.notify = notify
         if let saved = defaults.array(forKey: DefaultsKey.trackedComponents) as? [String] {
             trackedIDs = Set(saved)
         } else {
@@ -73,23 +97,9 @@ final class StatusStore: ObservableObject {
         incidents.filter { $0.componentIDs.isEmpty || $0.componentIDs.contains(where: trackedIDs.contains) }
     }
 
-    /// The worst status among the tracked services: none, minor, major or critical.
-    var effectiveIndicator: String {
-        switch trackedComponents.map({ Self.severity($0.status) }).max() ?? 0 {
-        case 0: return "none"
-        case 1: return "minor"
-        case 2: return "major"
-        default: return "critical"
-        }
-    }
-
-    private static func severity(_ status: String) -> Int {
-        switch status {
-        case "under_maintenance", "degraded_performance": return 1
-        case "partial_outage": return 2
-        case "major_outage": return 3
-        default: return 0
-        }
+    /// The worst status among the tracked services.
+    var effectiveIndicator: StatusIndicator {
+        trackedComponents.map(\.indicator).max() ?? .operational
     }
 
     // MARK: Fetch
@@ -101,7 +111,7 @@ final class StatusStore: ObservableObject {
     private func fetch() async {
         let request = URLRequest(url: AppInfo.statusSummaryURL, cachePolicy: .reloadIgnoringLocalCacheData,
                                  timeoutInterval: 15)
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
+        guard let (data, _) = try? await HTTP.session.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         apply(summary: json)
     }
@@ -127,15 +137,15 @@ final class StatusStore: ObservableObject {
 
         // Notify when the tracked services' overall status changes, not on the first fetch.
         let effective = effectiveIndicator
-        let previous = defaults.string(forKey: DefaultsKey.lastEffectiveIndicator)
+        let previous = defaults.string(forKey: DefaultsKey.lastEffectiveIndicator).flatMap(StatusIndicator.init(rawValue:))
         if !isFirstFetch, let previous, previous != effective, prefs.statusNotificationsEnabled {
-            if effective == "none" {
-                Notifier.post(title: "Claude is back online", body: "All systems operational")
+            if effective == .operational {
+                notify("Claude is back online", "All systems operational")
             } else {
-                Notifier.post(title: "Claude status: \(description)", body: "Visit status.claude.com for details")
+                notify("Claude status: \(description)", "Visit status.claude.com for details")
             }
         }
-        defaults.set(effective, forKey: DefaultsKey.lastEffectiveIndicator)
+        defaults.set(effective.rawValue, forKey: DefaultsKey.lastEffectiveIndicator)
     }
 
     private static func incident(_ raw: [String: Any]) -> StatusIncident? {

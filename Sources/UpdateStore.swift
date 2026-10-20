@@ -35,7 +35,15 @@ final class UpdateStore: ObservableObject {
     @Published private(set) var available: AvailableUpdate?
     @Published private(set) var announcement: Announcement?
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let notify: (_ title: String, _ body: String) -> Void
+
+    /// `defaults` and `notify` replace UserDefaults.standard and the notifications in tests.
+    init(defaults: UserDefaults = .standard,
+         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:)) {
+        self.defaults = defaults
+        self.notify = notify
+    }
 
     func refresh() {
         Task { await fetch() }
@@ -44,7 +52,7 @@ final class UpdateStore: ObservableObject {
     private func fetch() async {
         let request = URLRequest(url: AppInfo.updateFeedURL, cachePolicy: .reloadIgnoringLocalCacheData,
                                  timeoutInterval: 15)
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
+        guard let (data, _) = try? await HTTP.session.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             Log.app.notice("Update feed unavailable")
             return
@@ -65,7 +73,7 @@ final class UpdateStore: ObservableObject {
             }
             available = AvailableUpdate(version: version, title: title, body: body, buttons: Self.buttons(in: json))
             if defaults.string(forKey: DefaultsKey.lastNotifiedUpdateVersion) != version {
-                Notifier.post(title: "\(AppInfo.name) \(version) is available", body: title)
+                notify("\(AppInfo.name) \(version) is available", title)
                 defaults.set(version, forKey: DefaultsKey.lastNotifiedUpdateVersion)
             }
         } else {
@@ -83,7 +91,7 @@ final class UpdateStore: ObservableObject {
             let lastShown = defaults.string(forKey: DefaultsKey.lastShownMessageID)
             if lastShown != message.id {
                 if lastShown != nil, message.notify {
-                    Notifier.post(title: message.notificationTitle, body: message.notificationBody)
+                    notify(message.notificationTitle, message.notificationBody)
                 }
                 defaults.set(message.id, forKey: DefaultsKey.lastShownMessageID)
             }

@@ -15,9 +15,41 @@ struct UsageSnapshot: Equatable {
     var weeklySonnet: UsageWindow?   // only on plans with a separate Sonnet limit
     var weeklyFable: UsageWindow?    // Fable is counted separately
 
-    /// The fullest limit, which decides the menu bar color.
-    var fullestPercent: Int {
-        [session, weekly, weeklySonnet, weeklyFable].compactMap { $0?.percent }.max() ?? 0
+    /// The fullest weekly limit (all models, Sonnet or Fable), which the menu bar shows as a ring.
+    var fullestWeeklyPercent: Int {
+        [weekly, weeklySonnet, weeklyFable].compactMap { $0?.percent }.max() ?? 0
+    }
+
+    /// The used-up limit that resets last, when the session or the weekly limit is used up:
+    /// Claude works again once it has. The Sonnet and Fable limits stop only their model.
+    var blockingLimit: (weekly: Bool, window: UsageWindow)? {
+        [(weekly: false, window: session), (weekly: true, window: weekly)]
+            .filter { $0.window.percent >= 100 }
+            .max { ($0.window.resetsAt ?? .distantFuture) < ($1.window.resetsAt ?? .distantFuture) }
+    }
+}
+
+/// How full a limit is. From 70 % the session turns the menu bar symbol yellow, a weekly limit
+/// puts a ring around it and the bars turn orange; from 90 % all of them turn red.
+enum UsageLevel: Equatable {
+    case normal, high, critical
+
+    static let highPercent = 70
+    static let criticalPercent = 90
+
+    /// Compares fractions, so a whole percentage is never multiplied back and truncated.
+    init(fraction: Double) {
+        if fraction >= Double(Self.criticalPercent) / 100 {
+            self = .critical
+        } else if fraction >= Double(Self.highPercent) / 100 {
+            self = .high
+        } else {
+            self = .normal
+        }
+    }
+
+    init(percent: Int) {
+        self.init(fraction: Double(percent) / 100)
     }
 }
 
@@ -48,17 +80,29 @@ extension UsageWindow {
 
 /// Extra usage: pay-as-you-go spend against the monthly limit (/overage_spend_limit).
 struct ExtraUsage: Equatable {
+    var isEnabled = false     // switched on in claude.ai's settings
     var spentMinor = 0        // in minor units (cents)
-    var limitMinor = 0
-    var resetsAt: Date?
+    var limitMinor = 0        // 0: no monthly limit
+    var disabledUntil: Date?  // claude.ai doesn't charge extra usage before then
+    var disabledReason: String?
     var currency = "USD"
+
+    /// Whether claude.ai charges extra usage once a limit is used up: switched on, not
+    /// paused and below its monthly limit.
+    func isAvailable(now: Date = Date()) -> Bool {
+        guard isEnabled, disabledReason == nil else { return false }
+        if let disabledUntil, disabledUntil > now { return false }
+        return limitMinor == 0 || spentMinor < limitMinor
+    }
 }
 
 extension ExtraUsage {
     init(json: [String: Any]) {
+        isEnabled = json["is_enabled"] as? Bool ?? false
         spentMinor = JSON.int(json["used_credits"]) ?? 0
         limitMinor = JSON.int(json["monthly_credit_limit"]) ?? 0
-        resetsAt = JSON.date(json["disabled_until"])
+        disabledUntil = JSON.date(json["disabled_until"])
+        disabledReason = json["disabled_reason"] as? String
         currency = json["currency"] as? String ?? "USD"
     }
 }

@@ -38,9 +38,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // (min/intrinsic/max-size constraints, no preferredContentSize) leaves the popover
         // positioned for the 320pt guess while its window grows upward to fit the content,
         // pushing the top of the popup above the screen (seen with the macOS 27 SDK).
-        if #available(macOS 13.0, *) {
-            host.sizingOptions = [.preferredContentSize]
-        }
+        host.sizingOptions = [.preferredContentSize]
         popover.contentViewController = host
     }
 
@@ -57,9 +55,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     private func render() {
-        let state = usage.menuBarState()
-        guard state != shownState, let button = statusItem.button else { return }
+        guard let button = statusItem.button else { return }
+        let now = Date()
+        let tooltip = usage.tooltip(now: now)
+        if button.toolTip != tooltip { button.toolTip = tooltip }
+        let state = usage.menuBarState(now: now)
+        guard state != shownState else { return }
         shownState = state
+        Self.show(state, on: button)
+    }
+
+    /// Sets the symbol and the text for a state.
+    static func show(_ state: MenuBarState, on button: NSButton) {
         switch state {
         case .noData:
             button.image = MenuBarIcon.image(color: MenuBarIcon.inactiveColor)
@@ -73,9 +80,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 .font: NSFont.menuBarFont(ofSize: 0),
                 .foregroundColor: NSColor.secondaryLabelColor,
             ])
-        case .current(let percent, let fullest):
-            button.image = MenuBarIcon.image(color: MenuBarIcon.color(forPercent: fullest))
+        case .current(let percent, let weekly):
+            button.image = MenuBarIcon.image(color: MenuBarIcon.color(forPercent: percent), weeklyPercent: weekly)
             button.title = " \(percent)%"
+        case .extraUsage(let spent, let weekly):
+            button.image = MenuBarIcon.image(color: MenuBarIcon.color(forPercent: 100), weeklyPercent: weekly)
+            button.title = " \(spent)"
+        case .waiting(let timeLeft, let weekly):
+            button.image = MenuBarIcon.image(color: MenuBarIcon.color(forPercent: 100), weeklyPercent: weekly)
+            button.title = " " + (timeLeft ?? "100%")
         }
     }
 

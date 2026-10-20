@@ -1,12 +1,13 @@
 import AppKit
 
-/// The menu bar icon: the Claude symbol in green, yellow or red by usage, or gray.
+/// The menu bar icon: the Claude symbol in green, yellow or red by usage, or gray, and a ring
+/// around it for a weekly limit.
 enum MenuBarIcon {
     static func color(forPercent percent: Int) -> NSColor {
-        switch percent {
-        case ..<70: return NSColor(red: 0.13, green: 0.77, blue: 0.37, alpha: 1.0)   // green
-        case ..<90: return NSColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)      // yellow
-        default: return NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)       // red
+        switch UsageLevel(percent: percent) {
+        case .normal: return NSColor(red: 0.13, green: 0.77, blue: 0.37, alpha: 1.0)   // green
+        case .high: return NSColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)        // yellow
+        case .critical: return NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)  // red
         }
     }
 
@@ -15,22 +16,52 @@ enum MenuBarIcon {
 
     /// Drawn on demand so it stays sharp on 1x and Retina screens. A thin outline in the
     /// same color thickens the rays enough to read at 1x.
-    static func image(color: NSColor) -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
-            let outline: CGFloat = 0.8   // in symbol units (24-unit box)
-            let scale = rect.width / (24 + outline)
-            let path = NSBezierPath(svgPathData: claudeSymbolPathData)
-            path.transform(using: AffineTransform(translationByX: outline / 2, byY: outline / 2))
-            path.transform(using: AffineTransform(scale: scale))
-            path.lineWidth = outline * scale
-            path.lineJoinStyle = .round
-            color.set()
-            path.fill()
-            path.stroke()
+    ///
+    /// With `weeklyPercent`, a ring around a smaller symbol shows that weekly limit, filled
+    /// clockwise from 12 o'clock and colored by its level, the rest in translucent white.
+    /// The symbol inside goes without the outline, which would merge its rays at 14 pt.
+    static func image(color: NSColor, weeklyPercent: Int? = nil) -> NSImage {
+        let side: CGFloat = weeklyPercent == nil ? 18 : 20
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { rect in
+            guard let weeklyPercent else {
+                drawSymbol(in: rect, color: color, outline: 0.8)
+                return true
+            }
+            let stroke: CGFloat = 2
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+            let radius = (rect.width - stroke) / 2
+            // A fixed color: a label color such as tertiaryLabelColor renders as opaque gray here.
+            let track = NSBezierPath()
+            track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+            track.lineWidth = stroke
+            NSColor(white: 1, alpha: 0.35).setStroke()
+            track.stroke()
+            // The image is flipped: angles grow clockwise and -90° is 12 o'clock.
+            let arc = NSBezierPath()
+            arc.appendArc(withCenter: center, radius: radius, startAngle: -90,
+                          endAngle: -90 + 360 * min(Double(weeklyPercent) / 100, 1), clockwise: false)
+            arc.lineWidth = stroke
+            Self.color(forPercent: weeklyPercent).setStroke()
+            arc.stroke()
+            drawSymbol(in: rect.insetBy(dx: stroke + 1, dy: stroke + 1), color: color, outline: 0)
             return true
         }
         image.isTemplate = false
         return image
+    }
+
+    /// The symbol scaled into `rect` of a flipped image; `outline` is in symbol units (24-unit box).
+    private static func drawSymbol(in rect: NSRect, color: NSColor, outline: CGFloat) {
+        let scale = rect.width / (24 + outline)
+        let path = NSBezierPath(svgPathData: claudeSymbolPathData)
+        path.transform(using: AffineTransform(translationByX: outline / 2, byY: outline / 2))
+        path.transform(using: AffineTransform(scale: scale))
+        path.transform(using: AffineTransform(translationByX: rect.minX, byY: rect.minY))
+        path.lineWidth = outline * scale
+        path.lineJoinStyle = .round
+        color.set()
+        path.fill()
+        if outline > 0 { path.stroke() }
     }
 }
 

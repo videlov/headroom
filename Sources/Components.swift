@@ -10,11 +10,13 @@ extension Color {
             : NSColor(white: 0.24, alpha: 1.0)   // opaque: vibrancy washes out alpha grays
     })
 
-    /// Bar color for a usage fraction: green, orange from 70 %, red from 90 %.
+    /// Bar color for a usage fraction: green, orange from 70 %, red from 90 % (UsageLevel).
     static func usage(_ fraction: Double) -> Color {
-        if fraction < 0.7 { return .green }
-        if fraction < 0.9 { return .orange }
-        return .red
+        switch UsageLevel(fraction: fraction) {
+        case .normal: return .green
+        case .high: return .orange
+        case .critical: return .red
+        }
     }
 }
 
@@ -37,8 +39,8 @@ struct LimitBar: View {
     }
 }
 
-/// A multi-line text box where ⌘V, ⌘C, ⌘X and ⌘A work: a menu bar app has no Edit menu
-/// to route them.
+/// A multi-line text box where ⌘V, ⌘C, ⌘X, ⌘A, ⌘Z and ⇧⌘Z work: a menu bar app has no
+/// Edit menu to route them.
 struct PasteableTextField: NSViewRepresentable {
     @Binding var text: String
 
@@ -114,6 +116,12 @@ private final class PasteableNSTextView: NSTextView {
                 return true
             case "a":
                 selectAll(nil)
+                return true
+            case "z":
+                if undoManager?.canUndo == true { undoManager?.undo() }
+                return true
+            case "Z":   // ⇧⌘Z: Shift still applies to charactersIgnoringModifiers
+                if undoManager?.canRedo == true { undoManager?.redo() }
                 return true
             default:
                 break

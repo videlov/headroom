@@ -24,7 +24,7 @@ struct SettingsPanel: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Enable Usage Notifications")
                             .font(.caption)
-                        Text("Get alerts at 25%, 50%, 75%,\nand 90% session usage")
+                        Text("Get alerts at 25%, 50%, 75% and 90% session usage, at 90% and 100% weekly usage, when extra usage is charged and when the session cookie expires")
                             .font(.caption2)
                             .foregroundColor(Color.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)

@@ -10,7 +10,7 @@ struct StatusSection: View {
         let effective = status.effectiveIndicator
         let incidents = status.filteredIncidents
         let affected = status.affectedComponents
-        let hasIssue = effective != "none" && (!incidents.isEmpty || !affected.isEmpty)
+        let hasIssue = effective != .operational && (!incidents.isEmpty || !affected.isEmpty)
 
         VStack(alignment: .leading, spacing: 8) {
             // Compact header row
@@ -20,7 +20,7 @@ struct StatusSection: View {
                     .frame(width: 8, height: 8)
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(effective == "none" ? "All Claude services operational" : status.statusDescription)
+                    Text(effective == .operational ? "All Claude services operational" : status.statusDescription)
                         .font(.caption)
                         .foregroundColor(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -133,7 +133,7 @@ struct StatusSection: View {
         let more = tracked.count > 4 ? " +\(tracked.count - 4)" : ""
         let trackedSummary = tracked.isEmpty ? "No services tracked" : "Tracks \(trackedNames)\(more)"
 
-        if status.effectiveIndicator == "none" {
+        if status.effectiveIndicator == .operational {
             guard let lastCheck = status.lastUpdated else { return trackedSummary }
             return "\(trackedSummary) · checked \(Format.relative(lastCheck))"
         }
@@ -153,13 +153,12 @@ struct StatusSection: View {
         return String(name[..<paren.lowerBound])
     }
 
-    private static func indicatorColor(_ indicator: String) -> Color {
+    private static func indicatorColor(_ indicator: StatusIndicator) -> Color {
         switch indicator {
-        case "none": return .green
-        case "minor": return .yellow
-        case "major": return .orange
-        case "critical": return .red
-        default: return .gray
+        case .operational: return .green
+        case .minor: return .yellow
+        case .major: return .orange
+        case .critical: return .red
         }
     }
 

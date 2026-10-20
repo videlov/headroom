@@ -2,13 +2,14 @@
 
 Your Claude usage in the macOS menu bar: how much of the 5-hour session and the weekly limits you have used, extra usage, and Claude's service status, with alerts before you run out.
 
-**[Download the latest release](https://github.com/videlov/headroom/releases/latest)** · macOS 12 or later · [MIT license](LICENSE)
+**[Download the latest release](https://github.com/videlov/headroom/releases/latest)** · macOS 13 or later · [MIT license](LICENSE)
 
 ## Features
 
-- **Menu bar icon** with your session usage in percent. The Claude symbol turns yellow at 70 % and red at 90 % of your fullest limit (session or weekly), and gray while the numbers aren't current; `!` means claude.ai no longer accepts your cookie.
+- **Menu bar icon** with your session usage in percent. The Claude symbol turns yellow at 70 % and red at 90 % of your session limit. From 70 % of a weekly limit, a ring around the symbol shows how full the fullest one is, yellow and then red from 90 %. Gray means the numbers aren't current; `!` means claude.ai no longer accepts your session cookie.
+- **When a limit is used up**, the menu bar says what happens now: `€4.64`, this month's extra usage, while extra usage covers you; otherwise the time until the limit resets, such as `11h 20m`, with a full red ring when it's the weekly limit. Hover over the icon to see every limit in words.
 - **Usage at a glance:** the 5-hour session and the weekly limit with their reset times, the Sonnet and Fable limits when your plan has them, extra usage spend, free credits and limit resets.
-- **Alerts** when the session passes 25, 50, 75 and 90 %, and when a Claude service you track has an incident.
+- **Alerts** when the session passes 25, 50, 75 and 90 %, when the weekly limit passes 90 % and when it's used up, when extra usage starts being charged, and when a Claude service you track has an incident.
 - **Refresh interval** from 1 to 60 minutes (default 1), and a refresh after the Mac wakes up. **Refresh** in the popup fetches right away.
 - **⌘U** opens the popup from anywhere. **Open at Login**, and System, Dark or Light appearance.
 - **Menu bar only:** no Dock icon.
@@ -28,13 +29,13 @@ Headroom reads your usage with your claude.ai session cookie.
 1. In your browser, open [claude.ai/settings/usage](https://claude.ai/settings/usage).
 2. Open the developer tools (`⌥⌘I`), select the **Network** tab and reload the page.
 3. Click the **usage** request and copy the whole value of the **Cookie** request header.
-4. Click the Headroom icon, then **Session Cookie**, paste the value into **Cookie** and click **Save**.
+4. Click the Headroom icon, then **Session Cookie**, paste the value into the field and click **Save**.
 
-When the session ends, for example because you logged out of claude.ai, the menu bar shows `!` and the popup asks for a fresh cookie; copy one the same way. Headroom stops polling claude.ai until you do.
+When the session ends, for example because you logged out of claude.ai, the menu bar shows `!` and the popup asks for a fresh session cookie; copy one the same way. Headroom stops polling claude.ai until you do.
 
 ## Privacy
 
-The session cookie is kept in your login keychain, the settings in Headroom's preferences. Headroom connects only to:
+The session cookie is kept in your login keychain and nowhere else: Headroom keeps no cookie store or HTTP cache on disk, and deletes the ones earlier versions left in `~/Library/HTTPStorages` and `~/Library/Caches`. The popup doesn't show the saved cookie, only the last characters of its sessionKey. The settings are in Headroom's preferences. Headroom connects only to:
 
 - `claude.ai`, for the same usage data the claude.ai usage page loads;
 - `status.claude.com`, for service incidents;
@@ -48,6 +49,7 @@ You need Xcode or the Xcode Command Line Tools.
 
 ```bash
 scripts/make-signing-cert.sh   # once per Mac
+scripts/test.sh                # run the self-tests
 scripts/build.sh               # build/Headroom.app
 scripts/install.sh             # copy it to /Applications and start it
 scripts/package.sh             # build/Headroom.dmg
@@ -55,7 +57,7 @@ scripts/package.sh             # build/Headroom.dmg
 
 `make-signing-cert.sh` creates a self-signed code-signing certificate, `videlov Code Signing`, in your login keychain, and `build.sh` signs with it. With a stable certificate, macOS treats every build as the same app, so Headroom keeps reading the cookie from the Keychain without asking. To use your own name, run `scripts/make-signing-cert.sh "My Code Signing"` and build with `SIGNING_IDENTITY="My Code Signing" scripts/build.sh`; `SIGNING_IDENTITY=-` signs ad hoc.
 
-The code is in [`Sources`](Sources): `UsageStore` and `ClaudeAPI` fetch the usage, `StatusStore` the service status and `UpdateStore` the update feed; `UsageView` and its sections draw the popup, and `MenuBarController` the menu bar item.
+The code is in [`Sources`](Sources): `UsageStore` and `ClaudeAPI` fetch the usage, `StatusStore` the service status and `UpdateStore` the update feed; `UsageView` and its sections draw the popup, and `MenuBarController` the menu bar item. The self-tests that `scripts/test.sh` runs are in [`Tests`](Tests).
 
 ## Release a new version
 

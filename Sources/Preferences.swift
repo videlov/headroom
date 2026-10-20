@@ -5,11 +5,12 @@ import ServiceManagement
 enum DefaultsKey {
     static let usageNotifications = "usage_notifications_enabled"
     static let statusNotifications = "status_notifications_enabled"
-    static let openAtLogin = "open_at_login"
     static let shortcutEnabled = "shortcut_enabled"
     static let refreshInterval = "refresh_interval_minutes"
     static let appearanceMode = "appearance_mode"
     static let lastNotifiedThreshold = "last_notified_threshold"
+    static let lastNotifiedWeeklyThreshold = "last_notified_weekly_threshold"
+    static let extraChargeNotified = "extra_charge_notified"
     static let trackedComponents = "tracked_component_ids"
     static let lastEffectiveIndicator = "last_effective_indicator"
     static let updateSeenVersion = "update_seen_version"
@@ -52,7 +53,6 @@ final class Preferences: ObservableObject {
         didSet {
             guard openAtLogin != oldValue else { return }
             Self.setLoginItem(openAtLogin)
-            defaults.set(openAtLogin, forKey: DefaultsKey.openAtLogin)
         }
     }
 
@@ -66,15 +66,10 @@ final class Preferences: ObservableObject {
         let interval = defaults.integer(forKey: DefaultsKey.refreshInterval)
         refreshIntervalMinutes = interval > 0 ? interval : 1
         appearanceMode = AppearanceMode(rawValue: defaults.string(forKey: DefaultsKey.appearanceMode) ?? "") ?? .system
-        if #available(macOS 13.0, *) {
-            openAtLogin = SMAppService.mainApp.status == .enabled
-        } else {
-            openAtLogin = defaults.bool(forKey: DefaultsKey.openAtLogin)
-        }
+        openAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     static func setLoginItem(_ enabled: Bool) {
-        guard #available(macOS 13.0, *) else { return }
         do {
             if enabled, SMAppService.mainApp.status != .enabled {
                 try SMAppService.mainApp.register()

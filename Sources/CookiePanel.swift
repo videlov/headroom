@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Paste, save or clear the claude.ai session cookie.
+/// Paste, save or clear the claude.ai session cookie. The saved cookie stays out of the
+/// field, so it doesn't show on screen; the end of its sessionKey says which one it is.
 struct CookiePanel: View {
     @ObservedObject var usage: UsageStore
     @Binding var cookieInput: String
@@ -8,9 +9,15 @@ struct CookiePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Cookie:")
-                    .font(.caption2)
-                    .foregroundColor(Color.secondaryText)
+                HStack {
+                    Text("Session Cookie:")
+                    Spacer()
+                    if usage.hasCookie {
+                        Text("Saved" + (usage.savedCookieHint.map { " · sessionKey \($0)" } ?? ""))
+                    }
+                }
+                .font(.caption2)
+                .foregroundColor(Color.secondaryText)
                 VStack(spacing: 4) {
                     PasteableTextField(text: $cookieInput)
                         .frame(height: 60)
@@ -18,12 +25,12 @@ struct CookiePanel: View {
 
                     HStack(spacing: 8) {
                         Button("Save") {
-                            usage.saveCookie(cookieInput)
+                            if usage.saveCookie(cookieInput) { cookieInput = "" }
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
 
-                        if usage.usage != nil {
+                        if usage.hasCookie {
                             Button("Clear") {
                                 cookieInput = ""
                                 usage.clearCookie()
