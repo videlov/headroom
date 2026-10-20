@@ -1,7 +1,7 @@
 {
-  "version": "2.0.0",
-  "title": "Headroom 2.0.0",
-  "description": "The menu bar shows when the numbers aren't current, the popup explains problems in plain words, the session cookie lives in the Keychain, and ⌘U works without Accessibility permission.",
+  "version": "2.1.0",
+  "title": "Headroom 2.1.0",
+  "description": "A ring around the menu bar symbol shows the weekly limit, a used-up limit shows the extra usage spend or the time until it resets, new alerts cover the weekly limit and extra usage, and the session cookie is kept only in your Keychain.",
   "buttons": [
     {
       "label": "Download",
