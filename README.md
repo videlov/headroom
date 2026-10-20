@@ -4,7 +4,17 @@ Your Claude usage in the macOS menu bar: how much of the 5-hour session and the 
 
 **[Download the latest release](https://github.com/videlov/headroom/releases/latest)** · macOS 13 or later · [MIT license](LICENSE)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/popup-dark.png">
+  <img src="screenshots/popup-light.png" width="520" alt="The Headroom popup under its menu bar icon: the 5-hour session at 42 %, the weekly limit at 76 %, the weekly Fable limit at 18 %, EUR 4.64 of EUR 20.00 extra usage, and all Claude services operational">
+</picture>
+
 ## Features
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/menu-bar-dark.png">
+  <img src="screenshots/menu-bar-light.png" width="660" alt="The menu bar icon in five states: the session at 42 % in green; the session at 78 % in yellow; a yellow ring for a weekly limit at 85 %; €4.64 in red while extra usage covers a used-up limit; 11h 20m with a full red ring while the weekly limit is used up">
+</picture>
 
 - **Menu bar icon** with your session usage in percent. The Claude symbol turns yellow at 70 % and red at 90 % of your session limit. From 70 % of a weekly limit, a ring around the symbol shows how full the fullest one is, yellow and then red from 90 %. Gray means the numbers aren't current; `!` means claude.ai no longer accepts your session cookie.
 - **When a limit is used up**, the menu bar says what happens now: `€4.64`, this month's extra usage, while extra usage covers you; otherwise the time until the limit resets, such as `11h 20m`, with a full red ring when it's the weekly limit. Hover over the icon to see every limit in words.
@@ -53,11 +63,12 @@ scripts/test.sh                # run the self-tests
 scripts/build.sh               # build/Headroom.app
 scripts/install.sh             # copy it to /Applications and start it
 scripts/package.sh             # build/Headroom.dmg
+scripts/screenshots.sh         # redraw the screenshots in this README
 ```
 
 `make-signing-cert.sh` creates a self-signed code-signing certificate, `videlov Code Signing`, in your login keychain, and `build.sh` signs with it. With a stable certificate, macOS treats every build as the same app, so Headroom keeps reading the cookie from the Keychain without asking. To use your own name, run `scripts/make-signing-cert.sh "My Code Signing"` and build with `SIGNING_IDENTITY="My Code Signing" scripts/build.sh`; `SIGNING_IDENTITY=-` signs ad hoc.
 
-The code is in [`Sources`](Sources): `UsageStore` and `ClaudeAPI` fetch the usage, `StatusStore` the service status and `UpdateStore` the update feed; `UsageView` and its sections draw the popup, and `MenuBarController` the menu bar item. The self-tests that `scripts/test.sh` runs are in [`Tests`](Tests).
+The code is in [`Sources`](Sources): `UsageStore` and `ClaudeAPI` fetch the usage, `StatusStore` the service status and `UpdateStore` the update feed; `UsageView` and its sections draw the popup, and `MenuBarController` the menu bar item. The self-tests that `scripts/test.sh` runs are in [`Tests`](Tests). `scripts/screenshots.sh` draws the screenshots with [`screenshots/main.swift`](screenshots/main.swift), from the same views filled with sample data.
 
 ## Release a new version
 
