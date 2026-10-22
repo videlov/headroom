@@ -4,11 +4,7 @@ import AppKit
 /// around it for a weekly limit.
 enum MenuBarIcon {
     static func color(forPercent percent: Int) -> NSColor {
-        switch UsageLevel(percent: percent) {
-        case .normal: return NSColor(red: 0.13, green: 0.77, blue: 0.37, alpha: 1.0)   // green
-        case .high: return NSColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)        // yellow
-        case .critical: return NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)  // red
-        }
+        UsageLevel(percent: percent).color
     }
 
     /// For "no data", "cookie rejected" and stale data.
@@ -62,6 +58,18 @@ enum MenuBarIcon {
         color.set()
         path.fill()
         if outline > 0 { path.stroke() }
+    }
+}
+
+extension UsageLevel {
+    /// The menu bar icon's colors, which the popup's rings and bars use too, so a limit has
+    /// the same color in both.
+    var color: NSColor {
+        switch self {
+        case .normal: return NSColor(red: 0.13, green: 0.77, blue: 0.37, alpha: 1.0)   // green
+        case .high: return NSColor(red: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)        // yellow
+        case .critical: return NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0)  // red
+        }
     }
 }
 

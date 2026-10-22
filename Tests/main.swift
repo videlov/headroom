@@ -168,9 +168,10 @@ let now = Date(timeIntervalSince1970: 1_800_000_000)   // 2027-01-15 08:00:00 UT
     check(MenuBarIcon.color(forPercent: 69) == MenuBarIcon.color(forPercent: 0), "menu bar: green below 70")
     check(MenuBarIcon.color(forPercent: 70) != MenuBarIcon.color(forPercent: 69), "menu bar: yellow from 70")
     check(MenuBarIcon.color(forPercent: 90) != MenuBarIcon.color(forPercent: 89), "menu bar: red from 90")
-    checkEqual(Color.usage(0.69), .green, "bar: green")
-    checkEqual(Color.usage(0.7), .orange, "bar: orange from 70 %")
-    checkEqual(Color.usage(0.9), .red, "bar: red from 90 %")
+    let mismatched = (0...100).filter { percent -> Bool in
+        Color.usage(Double(percent) / 100) != Color(nsColor: MenuBarIcon.color(forPercent: percent))
+    }
+    checkEqual(mismatched, [], "popup and menu bar: the same color at every whole percentage")
 }
 
 @MainActor func testMenuBar() {

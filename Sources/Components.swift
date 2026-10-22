@@ -10,13 +10,10 @@ extension Color {
             : NSColor(white: 0.24, alpha: 1.0)   // opaque: vibrancy washes out alpha grays
     })
 
-    /// Bar color for a usage fraction: green, orange from 70 %, red from 90 % (UsageLevel).
+    /// Ring and bar color for a usage fraction: the menu bar icon's green, yellow from 70 %,
+    /// red from 90 % (UsageLevel).
     static func usage(_ fraction: Double) -> Color {
-        switch UsageLevel(fraction: fraction) {
-        case .normal: return .green
-        case .high: return .orange
-        case .critical: return .red
-        }
+        Color(nsColor: UsageLevel(fraction: fraction).color)
     }
 
     /// A card on the popup's background: a light veil in dark, a light shade in light.

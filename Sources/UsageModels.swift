@@ -30,7 +30,7 @@ struct UsageSnapshot: Equatable {
 }
 
 /// How full a limit is. From 70 % the session turns the menu bar symbol yellow, a weekly limit
-/// puts a ring around it and the bars turn orange; from 90 % all of them turn red.
+/// puts a ring around it and the popup's rings and bars turn yellow; from 90 % all of them turn red.
 enum UsageLevel: Equatable {
     case normal, high, critical
 
