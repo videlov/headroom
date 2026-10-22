@@ -1,7 +1,7 @@
 {
-  "version": "2.1.0",
-  "title": "Headroom 2.1.0",
-  "description": "A ring around the menu bar symbol shows the weekly limit, a used-up limit shows the extra usage spend or the time until it resets, new alerts cover the weekly limit and extra usage, and the session cookie is kept only in your Keychain.",
+  "version": "3.0.0",
+  "title": "Headroom 3.0.0",
+  "description": "A redesigned popup: the session and weekly limits as rings, Settings and the session cookie on pages of their own, Liquid Glass buttons on macOS 26 and later, and a hint when macOS has Headroom's notifications turned off.",
   "buttons": [
     {
       "label": "Download",
