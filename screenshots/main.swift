@@ -134,7 +134,10 @@ let statusSummary = json("""
     let status = StatusStore(prefs: prefs, defaults: defaults, notify: { _, _ in })
     status.apply(summary: statusSummary)
     let updates = UpdateStore(defaults: defaults, notify: { _, _ in })
-    let view = NSHostingView(rootView: UsageView(usage: usage, status: status, updates: updates, prefs: prefs))
+    // cacheDisplay leaves Liquid Glass out, so the buttons get the look before macOS 26.
+    let view = NSHostingView(rootView: UsageView(usage: usage, status: status, updates: updates, prefs: prefs)
+        .environment(\.drawsGlass, false)
+        .environment(\.fixedNow, now))
     return (render(view, appearance: theme.appearance), usage.menuBarState(now: now))
 }
 
@@ -320,6 +323,8 @@ let states: [(MenuBarState, String)] = [
 
 MainActor.assumeIsolated {
     _ = NSApplication.shared
+    // The popup's header shows the app icon, which this process doesn't have.
+    NSApp.applicationIconImage = NSImage(contentsOfFile: "Resources/AppIcon.png")
     try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
     for theme in themes {
         popupScreenshot(theme)

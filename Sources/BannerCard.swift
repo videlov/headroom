@@ -20,77 +20,79 @@ struct BannerCard: View {
     }
 
     private func messageCard(_ message: Announcement) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if let heading = message.heading, !heading.isEmpty {
-                    Text(heading)
-                        .font(.caption)
-                        .fontWeight(.semibold)
+        Card(tint: .accentColor) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let heading = message.heading, !heading.isEmpty {
+                        Text(heading)
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    Spacer()
+                    closeButton
                 }
-                Spacer()
-                closeButton
+                if !message.title.isEmpty {
+                    Text(message.title)
+                        .font(.system(size: 12))
+                }
+                if !message.body.isEmpty {
+                    Text(message.body)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                buttonRow(message.buttons)
             }
-            if !message.title.isEmpty {
-                Text(message.title)
-                    .font(.caption)
-            }
-            if !message.body.isEmpty {
-                Text(message.body)
-                    .font(.caption2)
-                    .foregroundColor(Color.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            buttonRow(message.buttons)
         }
-        .padding(8)
-        .background(Color.accentColor.opacity(0.12))
-        .cornerRadius(6)
     }
 
     private func updateCard(_ update: AvailableUpdate) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("⬆️")
-                Text("Version \(update.version) available")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                Spacer()
-                closeButton
+        Card(tint: .accentColor) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.accentColor)
+                    Text("Version \(update.version) available")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    closeButton
+                }
+                Text(update.title)
+                    .font(.system(size: 12))
+                Text(update.body)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                buttonRow(update.buttons)
             }
-            Text(update.title)
-                .font(.caption)
-            Text(update.body)
-                .font(.caption2)
-                .foregroundColor(Color.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            buttonRow(update.buttons)
         }
-        .padding(8)
-        .background(Color.accentColor.opacity(0.12))
-        .cornerRadius(6)
     }
 
     private var closeButton: some View {
         Button(action: { updates.dismissCurrent() }) {
             Image(systemName: "xmark")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 8, weight: .bold))
                 .foregroundColor(Color.secondaryText)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.primary.opacity(0.08)))
+                .contentShape(Circle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
+        .help("Dismiss")
     }
 
     @ViewBuilder private func buttonRow(_ buttons: [BannerButton]) -> some View {
         if !buttons.isEmpty {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(buttons.indices, id: \.self) { i in
                     bannerButton(buttons[i])
                 }
             }
+            .padding(.top, 4)
         }
     }
 
-    @ViewBuilder private func bannerButton(_ button: BannerButton) -> some View {
-        let tap = {
+    private func bannerButton(_ button: BannerButton) -> some View {
+        Button(button.label) {
             if let url = button.url {
                 NSWorkspace.shared.open(url)
             }
@@ -98,14 +100,6 @@ struct BannerCard: View {
                 updates.dismissCurrent()
             }
         }
-        if button.isPrimary {
-            Button(button.label, action: tap)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-        } else {
-            Button(button.label, action: tap)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        }
+        .buttonStyle(PillButtonStyle(kind: button.isPrimary ? .prominent : .normal))
     }
 }

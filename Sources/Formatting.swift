@@ -13,6 +13,14 @@ enum Format {
         includeDate ? "on \(dateAndTime.string(from: date))" : "at \(shortTime.string(from: date))"
     }
 
+    /// When a limit resets, short, for the popup: "16:40" today, "Fri 08:00" within the next
+    /// six days, "29 Oct, 08:00" after that, so a weekday never stands for two dates.
+    static func resetShort(_ date: Date, now: Date = Date()) -> String {
+        if Calendar.current.isDate(date, inSameDayAs: now) { return shortTime.string(from: date) }
+        if date.timeIntervalSince(now) < 6 * 86_400 { return weekdayTime.string(from: date) }
+        return dayMonthTime.string(from: date)
+    }
+
     /// "Oct 15".
     static func monthDay(_ date: Date) -> String {
         monthDayFormatter.string(from: date)
@@ -74,6 +82,18 @@ enum Format {
         let formatter = DateFormatter()
         let time = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current) ?? "HH:mm"
         formatter.dateFormat = "d MMM yyyy 'at' \(time)"
+        return formatter
+    }()
+
+    private static let weekdayTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("EEEjmm")
+        return formatter
+    }()
+
+    private static let dayMonthTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("dMMMjmm")
         return formatter
     }()
 

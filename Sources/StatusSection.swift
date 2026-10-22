@@ -12,39 +12,43 @@ struct StatusSection: View {
         let affected = status.affectedComponents
         let hasIssue = effective != .operational && (!incidents.isEmpty || !affected.isEmpty)
 
-        VStack(alignment: .leading, spacing: 8) {
-            // Compact header row
-            HStack(alignment: .top, spacing: 6) {
-                Circle()
-                    .fill(Self.indicatorColor(effective))
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(effective == .operational ? "All Claude services operational" : status.statusDescription)
-                        .font(.caption)
-                        .foregroundColor(Color.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(contextLine)
-                        .font(.system(size: 10))
-                        .foregroundColor(Color.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                if hasIssue {
-                    Button(action: { showingDetails.toggle() }) {
-                        HStack(spacing: 2) {
-                            Text(showingDetails ? "Hide" : "Details")
-                            Image(systemName: showingDetails ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 8))
+        Card(padding: 10, tint: hasIssue ? .orange : nil) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Circle()
+                        .fill(Self.indicatorColor(effective))
+                        .frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(effective == .operational ? "All Claude services operational" : status.statusDescription)
+                            .font(.system(size: 12))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if effective != .operational, !issueLine.isEmpty {
+                            Text(issueLine)
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.caption2)
                     }
-                    .buttonStyle(.borderless)
+                    Spacer(minLength: 6)
+                    if hasIssue {
+                        Button(action: { showingDetails.toggle() }) {
+                            HStack(spacing: 3) {
+                                Text(showingDetails ? "Hide" : "Details")
+                                Image(systemName: showingDetails ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-            }
+                .help(trackedLine)
 
-            if hasIssue && showingDetails {
-                details(incidents: incidents, affected: affected)
+                if hasIssue && showingDetails {
+                    details(incidents: incidents, affected: affected)
+                }
             }
         }
     }
@@ -68,14 +72,14 @@ struct StatusSection: View {
                             .cornerRadius(3)
                         if let updated = incident.updatedAt {
                             Text("Updated \(Format.relative(updated))")
-                                .font(.caption2)
+                                .font(.system(size: 11))
                                 .foregroundColor(Color.secondaryText)
                         }
                     }
 
                     if !incident.latestUpdate.isEmpty {
                         Text(incident.latestUpdate)
-                            .font(.caption)
+                            .font(.system(size: 12))
                             .foregroundColor(.primary)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 2)
@@ -87,61 +91,53 @@ struct StatusSection: View {
             if incidents.isEmpty && !affected.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Affected services")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Color.secondaryText)
                     ForEach(affected) { component in
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(Color.orange)
                                 .frame(width: 5, height: 5)
-                            Text(component.name).font(.caption2)
+                            Text(component.name).font(.system(size: 11))
                             Spacer()
                             Text(Self.label(forComponentStatus: component.status))
-                                .font(.caption2)
+                                .font(.system(size: 11))
                                 .foregroundColor(Color.secondaryText)
                         }
                     }
                 }
             }
 
-            Divider()
+            RowDivider()
 
             HStack {
                 if let lastCheck = status.lastUpdated {
                     Text("Checked \(Format.relative(lastCheck))")
-                        .font(.caption2)
+                        .font(.system(size: 11))
                         .foregroundColor(Color.secondaryText)
                 }
                 Spacer()
-                Button(action: { NSWorkspace.shared.open(AppInfo.statusPageURL) }) {
-                    Text("Open status page →")
-                        .font(.caption2)
-                }
-                .buttonStyle(.borderless)
+                LinkButton(title: "Status page") { NSWorkspace.shared.open(AppInfo.statusPageURL) }
             }
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.10))
-        .cornerRadius(6)
     }
 
-    /// "Tracks claude.ai, Claude Console, … · checked just now", or what's affected.
-    private var contextLine: String {
+    /// "Tracks claude.ai, Claude Console, … · checked just now", for the tooltip.
+    private var trackedLine: String {
         let tracked = status.trackedComponents
-        let trackedNames = tracked.prefix(4).map { Self.shortName($0.name) }.joined(separator: ", ")
-        let more = tracked.count > 4 ? " +\(tracked.count - 4)" : ""
-        let trackedSummary = tracked.isEmpty ? "No services tracked" : "Tracks \(trackedNames)\(more)"
+        guard !tracked.isEmpty else { return "No services tracked" }
+        let names = tracked.map { Self.shortName($0.name) }.joined(separator: ", ")
+        let checked = status.lastUpdated.map { " · checked \(Format.relative($0))" } ?? ""
+        return "Tracks \(names)\(checked)"
+    }
 
-        if status.effectiveIndicator == .operational {
-            guard let lastCheck = status.lastUpdated else { return trackedSummary }
-            return "\(trackedSummary) · checked \(Format.relative(lastCheck))"
-        }
+    /// What's affected, or when the status was checked.
+    private var issueLine: String {
         let affected = status.affectedComponents
         if !affected.isEmpty {
             let names = affected.prefix(3).map { Self.shortName($0.name) }.joined(separator: ", ")
             let others = affected.count > 3 ? " +\(affected.count - 3)" : ""
-            return "Affects: \(names)\(others)"
+            return "Affects \(names)\(others)"
         }
         guard let lastCheck = status.lastUpdated else { return "" }
         return "Checked \(Format.relative(lastCheck))"
