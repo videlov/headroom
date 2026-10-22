@@ -1,7 +1,7 @@
 {
-  "version": "3.0.0",
-  "title": "Headroom 3.0.0",
-  "description": "A redesigned popup: the session and weekly limits as rings, Settings and the session cookie on pages of their own, Liquid Glass buttons on macOS 26 and later, and a hint when macOS has Headroom's notifications turned off.",
+  "version": "3.0.1",
+  "title": "Headroom 3.0.1",
+  "description": "The popup's rings and bars now have the menu bar icon's colors, so a limit looks the same in both: yellow from 70 % instead of orange, red from 90 %.",
   "buttons": [
     {
       "label": "Download",
