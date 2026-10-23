@@ -3,7 +3,8 @@ import SwiftUI
 
 // Self-tests for the logic behind the popup and the menu bar. scripts/test.sh compiles
 // them with Sources/ (without HeadroomApp.swift, which has @main) and runs them. They
-// use a preferences domain of their own and never touch the network or the Keychain.
+// use a preferences domain of their own and never touch the Keychain or the network:
+// the stores' requests go to StubProtocol.
 
 var checks = 0
 var failures = 0
@@ -64,6 +65,63 @@ final class Inbox {
     }
 }
 
+/// Answers the requests of `stubSession` without the network and records them.
+final class StubProtocol: URLProtocol {
+    struct Answer {
+        var status = 200
+        var headers: [String: String] = [:]
+        var body = "{}"
+    }
+
+    private static let lock = NSLock()
+    private static var answer: (URLRequest) -> Answer? = { _ in nil }
+    private static var requests: [URLRequest] = []
+
+    /// Answers with `answer` from now on; nil fails a request as if offline.
+    static func stub(_ answer: @escaping (URLRequest) -> Answer?) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.answer = answer
+        requests = []
+    }
+
+    /// The requests since the last call.
+    static func takeRequests() -> [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        let taken = requests
+        requests = []
+        return taken
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+
+    override func startLoading() {
+        Self.lock.lock()
+        Self.requests.append(request)
+        let answer = Self.answer(request)
+        Self.lock.unlock()
+        guard let answer, let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: answer.status, httpVersion: "HTTP/1.1",
+                                             headerFields: answer.headers) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(answer.body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
+/// Configured like HTTP.session, but answered by StubProtocol.
+let stubSession: URLSession = {
+    let config = HTTP.session.configuration
+    config.protocolClasses = [StubProtocol.self]
+    return URLSession(configuration: config)
+}()
+
 let now = Date(timeIntervalSince1970: 1_800_000_000)   // 2027-01-15 08:00:00 UTC
 
 @MainActor func testFormatting() {
@@ -84,8 +142,15 @@ let now = Date(timeIntervalSince1970: 1_800_000_000)   // 2027-01-15 08:00:00 UT
     checkEqual(Format.relative(now - 300, now: now), "5 mins ago", "relative: minutes")
     checkEqual(Format.relative(now - 7200, now: now), "2 hours ago", "relative: hours")
     checkEqual(Format.relative(now - 86400, now: now), "1 day ago", "relative: a day")
-    check(Format.reset(now).hasPrefix("at "), "session resets: a time")
-    check(Format.reset(now, includeDate: true).hasPrefix("on "), "weekly resets: a date")
+    // scripts/test.sh runs the tests in en_DE and Berlin time, where now is Friday 09:00.
+    checkEqual(Format.reset(now), "at 09:00", "session resets: the time")
+    checkEqual(Format.reset(now, includeDate: true), "on 15 Jan 2027 at 09:00", "weekly resets: date and time")
+    checkEqual(Format.resetShort(now + 2 * 3600, now: now), "11:00", "popup: a reset today shows the time")
+    checkEqual(Format.resetShort(now + 15 * 3600, now: now), "Sat 00:00", "popup: after midnight, the weekday")
+    checkEqual(Format.resetShort(now + 6 * 86400 - 60, now: now), "Thu 08:59", "popup: the weekday within six days")
+    checkEqual(Format.resetShort(now + 6 * 86400, now: now), "21. Jan at 09:00",
+               "popup: the date from six days on, so a weekday never means two dates")
+    checkEqual(Format.monthDay(now), "Jan 15", "month and day")
 }
 
 @MainActor func testParsing() {
@@ -240,6 +305,98 @@ let now = Date(timeIntervalSince1970: 1_800_000_000)   // 2027-01-15 08:00:00 UT
     }
     checkEqual(titles, ["", " !", " 6%", " 6%", " €4.64", " 11h 20m"], "menu bar texts")
     checkEqual(iconWidths, [18, 18, 18, 20, 18, 20], "the weekly ring widens the icon")
+}
+
+/// Draws `image` at 2x into an sRGB bitmap. The result gives the color at a point (in points,
+/// from the top left) as [red, green, blue, alpha] from 0 to 1, not premultiplied.
+func pixels(of image: NSImage) -> (_ x: Double, _ y: Double) -> [Double] {
+    let width = Int(image.size.width) * 2, height = Int(image.size.height) * 2
+    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.scaleBy(x: 2, y: 2)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    image.draw(in: NSRect(origin: .zero, size: image.size))
+    NSGraphicsContext.restoreGraphicsState()
+    let bytes = Array(UnsafeBufferPointer(start: context.data!.assumingMemoryBound(to: UInt8.self),
+                                          count: width * height * 4))
+    return { x, y in
+        let i = (Int(y * 2) * width + Int(x * 2)) * 4   // the first row is the top
+        let alpha = Double(bytes[i + 3]) / 255
+        guard alpha > 0 else { return [0, 0, 0, 0] }
+        return (0..<3).map { Double(bytes[i + $0]) / 255 / alpha } + [alpha]
+    }
+}
+
+/// Whether two colors from `pixels(of:)` match, give or take rounding.
+func matches(_ actual: [Double], _ expected: NSColor) -> Bool {
+    let c = expected.usingColorSpace(.sRGB)!
+    let rgba = [c.redComponent, c.greenComponent, c.blueComponent, c.alphaComponent].map(Double.init)
+    return zip(actual, rgba).allSatisfy { abs($0 - $1) < 0.06 }
+}
+
+@MainActor func testMenuBarIcon() {
+    // The SVG path parser, on small paths.
+    func bounds(_ d: String) -> [Double] {
+        let r = NSBezierPath(svgPathData: d).bounds
+        return [r.minX, r.minY, r.width, r.height].map { (Double($0) * 100).rounded() / 100 }
+    }
+    checkEqual(bounds("M0 0L10 0L10 10Z"), [0, 0, 10, 10], "path: absolute lines")
+    checkEqual(bounds("m1 1h2v2h-2z"), [1, 1, 2, 2], "path: relative lines")
+    checkEqual(bounds("M0 0 10 0 10 10z"), [0, 0, 10, 10], "path: pairs after M are lines")
+    checkEqual(bounds("M.5.5L1.5-.5"), [0.5, -0.5, 1, 1], "path: packed numbers")
+    checkEqual(bounds("M0 0C0 10 10 10 10 0"), [0, 0, 10, 7.5], "path: curves")
+
+    // The weekly ring at 85 % starts at 12 o'clock and runs clockwise in the weekly level's
+    // color, the rest is white at 35 %, and the symbol inside has the session's color.
+    let red = MenuBarIcon.color(forPercent: 95), yellow = MenuBarIcon.color(forPercent: 85)
+    let ring = pixels(of: MenuBarIcon.image(color: red, weeklyPercent: 85))
+    check(matches(ring(10.5, 1), yellow), "ring: starts at 12 o'clock")
+    check(matches(ring(19, 10), yellow) && matches(ring(1, 10), yellow), "ring: clockwise, past 9 o'clock")
+    check(matches(ring(5.5, 2.2), NSColor(white: 1, alpha: 0.35)), "ring: the rest in white at 35 %")
+    check(matches(ring(10, 10), red), "ring: the symbol in the session's color")
+    let plain = pixels(of: MenuBarIcon.image(color: red))
+    check(matches(plain(9, 9), red) && plain(0.5, 0.5)[3] == 0, "no ring: just the symbol")
+}
+
+@MainActor func testTooltip() {
+    let defaults = freshDefaults()
+    let prefs = Preferences(defaults: defaults)
+    checkEqual(UsageStore(prefs: prefs, defaults: defaults, cookie: "", notify: { _, _ in }).tooltip(now: now),
+               "Set your claude.ai session cookie to see your usage.", "no cookie yet")
+    let store = UsageStore(prefs: prefs, defaults: defaults, cookie: "sessionKey=x", notify: { _, _ in })
+    store.apply(usage: .failure(ClaudeAPI.Failure.network), extra: nil, credits: nil, resets: nil, now: now)
+    checkEqual(store.tooltip(now: now), "Can't reach claude.ai.", "a problem before the first numbers")
+
+    var snapshot = makeSnapshot(session: 42, weekly: 76, sessionResets: now + 3600, weeklyResets: now + 86400)
+    snapshot.weeklySonnet = UsageWindow(percent: 40)
+    snapshot.weeklyFable = UsageWindow(percent: 0)
+    store.apply(usage: .success(snapshot), extra: ExtraUsage(isEnabled: true, spentMinor: 464, currency: "EUR"),
+                credits: nil, resets: nil, now: now)
+    checkEqual(store.tooltip(now: now), """
+        Session (5 hour): 42% used · resets at 10:00
+        Weekly (7 day): 76% used · resets on 16 Jan 2027 at 09:00
+        Weekly Sonnet (7 day): 40% used
+        Extra usage: EUR 4.64 this month
+        """, "every limit, Fable only while in use, extra usage without a monthly limit")
+    store.apply(usage: .failure(ClaudeAPI.Failure.network), extra: nil, credits: nil, resets: nil, now: now + 60)
+    check(store.tooltip(now: now + 60).hasPrefix("Can't reach claude.ai. Showing data from 09:00.\nSession (5 hour): 42% used"),
+          "the problem first, then the numbers still on screen")
+
+    store.apply(usage: .success(makeSnapshot(session: 100, weekly: 50)), extra: nil, credits: nil, resets: nil, now: now)
+    check(store.tooltip(now: now).hasPrefix("Session limit reached: Claude now runs on extra usage.\n"), "extra usage covers it")
+    store.apply(usage: .success(makeSnapshot(session: 50, weekly: 100)), extra: ExtraUsage(), credits: nil, resets: nil, now: now)
+    check(store.tooltip(now: now).hasPrefix("Weekly limit reached.\n"), "used up, no reset time")
+
+    store.apply(usage: .success(makeSnapshot(session: 1, weekly: 1)), extra: nil,
+                credits: FreeCredits(remainingMinor: 250, currency: "CHF"),
+                resets: LimitResets(count: 2, endsAt: now + 86400), now: now)
+    checkEqual(store.freeCreditsMinor, 250, "free credits")
+    checkEqual(store.currency, "CHF", "the credits' currency")
+    checkEqual(store.limitResets, LimitResets(count: 2, endsAt: now + 86400), "limit resets")
+    checkEqual(UsageProblem.rateLimited(until: now + 120).message(dataTime: now),
+               "claude.ai is limiting requests. Trying again at 09:02. Showing data from 09:00.", "rate limited")
 }
 
 @MainActor func testAlerts() {
@@ -421,17 +578,213 @@ let now = Date(timeIntervalSince1970: 1_800_000_000)   // 2027-01-15 08:00:00 UT
     checkEqual(inbox.take(), ["News | Second"], "a new message notifies")
 }
 
+/// claude.ai's answers for the organization org-1, by path; other paths get a 404.
+func claudeAI(_ changes: [String: StubProtocol.Answer] = [:]) -> (URLRequest) -> StubProtocol.Answer? {
+    let answers = [
+        "/api/bootstrap": StubProtocol.Answer(body: #"{"account": {"lastActiveOrgId": "org-1"}}"#),
+        "/api/organizations/org-1/usage": StubProtocol.Answer(body: """
+            {"five_hour": {"utilization": 42.0, "resets_at": "\(iso(now + 3600))"},
+             "seven_day": {"utilization": 76.0, "resets_at": "\(iso(now + 86400))"},
+             "cedar_ember": {"eligible": true, "grants": [{"resets_left": 2, "ends_at": "\(iso(now + 5 * 86400))"}]}}
+            """),
+        "/api/organizations/org-1/overage_spend_limit": StubProtocol.Answer(body: #"""
+            {"is_enabled": true, "used_credits": 464, "monthly_credit_limit": 2000, "currency": "EUR"}
+            """#),
+        "/api/organizations/org-1/prepaid/credits": StubProtocol.Answer(body: #"{"amount": 250, "currency": "EUR"}"#),
+    ].merging(changes) { $1 }
+    return { request in answers[request.url?.path ?? ""] ?? StubProtocol.Answer(status: 404) }
+}
+
+@MainActor func testRefresh() async {
+    let defaults = freshDefaults()
+    let prefs = Preferences(defaults: defaults)
+    func makeStore(cookie: String) -> UsageStore {
+        UsageStore(prefs: prefs, defaults: defaults, cookie: cookie, notify: { _, _ in }, session: stubSession)
+    }
+    func refresh(_ store: UsageStore, force: Bool = false) async {
+        store.refresh(force: force)
+        await store.refreshTask?.value
+    }
+    func paths() -> [String] {
+        StubProtocol.takeRequests().compactMap(\.url?.path).sorted()
+    }
+    let three = ["/api/organizations/org-1/overage_spend_limit", "/api/organizations/org-1/prepaid/credits",
+                 "/api/organizations/org-1/usage"]
+
+    StubProtocol.stub(claudeAI())
+    let store = makeStore(cookie: "sessionKey=sk-1")
+    await refresh(store)
+    checkEqual(paths(), ["/api/bootstrap"] + three, "the first refresh asks for the organization, then three requests")
+    checkEqual(store.usage?.session, UsageWindow(percent: 42, resetsAt: now + 3600), "the session")
+    checkEqual(store.usage?.weekly.percent, 76, "the weekly limit")
+    checkEqual(store.extra.spentMinor, 464, "extra usage")
+    checkEqual(store.freeCreditsMinor, 250, "free credits")
+    checkEqual(store.currency, "EUR", "the currency")
+    checkEqual(store.limitResets.count, 2, "the limit resets come with the usage")
+    checkEqual(store.problem, nil, "no problem")
+
+    await refresh(store)
+    let requests = StubProtocol.takeRequests()
+    checkEqual(requests.compactMap(\.url?.path).sorted(), three, "later refreshes: three requests, the organization is kept")
+    let usageRequest = requests.first { $0.url?.path == "/api/organizations/org-1/usage" }
+    checkEqual(usageRequest?.url?.query, "cedar_ember=1&skip_spend=1", "the limits and the resets in one answer")
+    checkEqual(usageRequest?.value(forHTTPHeaderField: "Cookie"), "sessionKey=sk-1", "the cookie goes along")
+
+    await refresh(makeStore(cookie: "sessionKey=sk-1; lastActiveOrg=org-1"))
+    checkEqual(paths(), three, "lastActiveOrg in the cookie: no /api/bootstrap")
+    await refresh(makeStore(cookie: ""))
+    checkEqual(paths(), [], "no cookie: no requests")
+
+    StubProtocol.stub(claudeAI(["/api/organizations/org-1/overage_spend_limit": .init(status: 500)]))
+    await refresh(store)
+    checkEqual(store.extra.spentMinor, 464, "a failed extra usage request keeps the last values")
+    checkEqual(store.problem, nil, "only /usage decides whether there's a problem")
+
+    StubProtocol.stub(claudeAI(["/api/organizations/org-1/usage": .init(status: 429, headers: ["Retry-After": "900"])]))
+    await refresh(store)
+    if case .rateLimited(let until)? = store.problem {
+        check(abs(until.timeIntervalSinceNow - 900) < 60, "429: waits as long as Retry-After asks")
+    } else {
+        check(false, "429: rate limited, got \(String(describing: store.problem))")
+    }
+    store.refresh()
+    check(store.refreshTask == nil, "timers don't fetch while rate limited")
+
+    StubProtocol.stub(claudeAI(["/api/organizations/org-1/usage":
+        .init(status: 403, body: #"{"type": "error", "error": {"type": "permission_error"}}"#)]))
+    await refresh(store, force: true)
+    checkEqual(store.problem, .cookieRejected, "403 from claude.ai: the session ended")
+    _ = StubProtocol.takeRequests()
+    store.refresh()
+    check(store.refreshTask == nil, "timers don't fetch while the cookie is rejected")
+    await refresh(store, force: true)
+    checkEqual(paths(), three, "Refresh does")
+
+    StubProtocol.stub(claudeAI(["/api/organizations/org-1/usage": .init(body: "<!DOCTYPE html>")]))
+    await refresh(store, force: true)
+    checkEqual(store.problem, .failed("claude.ai sent an unexpected answer."), "an answer that isn't JSON")
+    StubProtocol.stub { _ in nil }
+    await refresh(store, force: true)
+    checkEqual(store.problem, .unreachable, "no connection")
+    checkEqual(store.usage?.session.percent, 42, "the last numbers stay")
+
+    StubProtocol.stub(claudeAI(["/api/bootstrap": .init(body: #"{"account": {}}"#)]))
+    let noOrganization = makeStore(cookie: "sessionKey=sk-2")
+    await refresh(noOrganization)
+    checkEqual(noOrganization.problem, .failed("Couldn't find your claude.ai organization in the session cookie."),
+               "no organization")
+    checkEqual(paths(), ["/api/bootstrap"], "nothing more is asked without one")
+}
+
+@MainActor func testStatusFetch() async {
+    let defaults = freshDefaults()
+    let status = StatusStore(prefs: Preferences(defaults: defaults), defaults: defaults, notify: { _, _ in },
+                             session: stubSession)
+    StubProtocol.stub { request in
+        guard request.url == AppInfo.statusSummaryURL else { return StubProtocol.Answer(status: 404) }
+        return StubProtocol.Answer(body: """
+            {"status": {"indicator": "minor", "description": "Minor Service Outage"},
+             "components": [{"id": "ai", "name": "claude.ai", "status": "degraded_performance"},
+                            {"id": "code", "name": "Claude Code", "status": "operational"},
+                            {"id": "gov", "name": "Claude for Government", "status": "operational"}],
+             "incidents": [
+                {"id": "i1", "name": "Slow chats", "status": "identified", "updated_at": "\(iso(now - 600))",
+                 "incident_updates": [{"body": "We found the cause.", "created_at": "\(iso(now - 300))"},
+                                      {"body": "Looking into it.", "created_at": "\(iso(now - 900))"}],
+                 "components": [{"id": "ai"}]},
+                {"id": "i2", "name": "Login trouble", "status": "investigating", "updated_at": "\(iso(now - 60))",
+                 "components": [{"id": "gov"}]},
+                {"id": "i3", "name": "Elevated errors", "status": "monitoring", "updated_at": "\(iso(now - 60))"},
+                {"id": "i4", "name": "Over", "status": "resolved"},
+                {"id": "i5", "name": "Explained", "status": "postmortem"}]}
+            """)
+    }
+    await status.fetch()
+    checkEqual(StubProtocol.takeRequests().compactMap(\.url), [AppInfo.statusSummaryURL], "one request to status.claude.com")
+    checkEqual(status.statusDescription, "Minor Service Outage", "the status line")
+    checkEqual(status.incidents.map(\.id), ["i1", "i2", "i3"], "resolved incidents and postmortems are left out")
+    checkEqual(status.incidents.first, StatusIncident(id: "i1", name: "Slow chats", status: "identified",
+                                                      latestUpdate: "We found the cause.", updatedAt: now - 300,
+                                                      componentIDs: ["ai"]), "an incident and its latest update")
+    checkEqual(status.incidents.last?.updatedAt, now - 60, "without updates: the incident's own time")
+    checkEqual(status.filteredIncidents.map(\.id), ["i1", "i3"], "incidents of tracked services, or of none in particular")
+    checkEqual(status.effectiveIndicator, .minor, "degraded performance counts as minor")
+
+    status.toggleTracking("gov")
+    checkEqual(status.filteredIncidents.map(\.id), ["i1", "i2", "i3"], "tracking Government shows its incident")
+    status.toggleTracking("ai")
+    checkEqual(status.effectiveIndicator, .operational, "an untracked service doesn't count")
+    let reopened = StatusStore(prefs: Preferences(defaults: defaults), defaults: defaults, notify: { _, _ in })
+    check(reopened.isTracked("gov") && !reopened.isTracked("ai") && reopened.isTracked("code"), "the choice is saved")
+
+    StubProtocol.stub { _ in nil }
+    await status.fetch()
+    checkEqual(status.statusDescription, "Minor Service Outage", "no connection: the last status stays")
+}
+
+@MainActor func testUpdateFeed() async {
+    let inbox = Inbox()
+    let defaults = freshDefaults()
+    let updates = UpdateStore(defaults: defaults, notify: inbox.post, session: stubSession)
+    StubProtocol.stub { request in
+        guard request.url == AppInfo.updateFeedURL else { return StubProtocol.Answer(status: 404) }
+        return StubProtocol.Answer(body: #"""
+            {"version": "9.0.1", "title": "Headroom 9.0.1", "description": "Fixes",
+             "download_url": "https://github.com/videlov/headroom/releases",
+             "message": {"id": "m1", "title": "Hello", "body": "First"}}
+            """#)
+    }
+    await updates.fetch()
+    checkEqual(StubProtocol.takeRequests().compactMap(\.url), [AppInfo.updateFeedURL], "one request to the feed")
+    checkEqual(updates.available?.version, "9.0.1", "the update")
+    checkEqual(updates.available?.buttons.map(\.label), ["Download", "Later"], "older feeds: download_url gives Download and Later")
+    checkEqual(inbox.take(), ["Headroom 9.0.1 is available | Headroom 9.0.1"], "the update notifies, the first message doesn't")
+
+    // Both live: the one first seen last shows; a tie goes to the update.
+    defaults.set(100.0, forKey: DefaultsKey.updateSeenAt)
+    defaults.set(200.0, forKey: DefaultsKey.messageSeenAt)
+    checkEqual(updates.visibleBanner, .message, "the message, seen after the update")
+    defaults.set(200.0, forKey: DefaultsKey.updateSeenAt)
+    checkEqual(updates.visibleBanner, .update, "a tie goes to the update")
+    defaults.set(100.0, forKey: DefaultsKey.updateSeenAt)
+    updates.dismissCurrent()
+    checkEqual(updates.visibleBanner, .update, "dismissing the message shows the update")
+    await updates.fetch()
+    checkEqual(updates.announcement, nil, "a dismissed message stays away")
+
+    updates.apply(feed: json(#"""
+    {"message": {"id": "m2", "title": "News", "body": "Long text", "notification": {"title": "Short", "body": "Text"}}}
+    """#))
+    checkEqual(inbox.take(), ["Short | Text"], "a message's own notification text")
+    checkEqual(updates.available, nil, "no version in the feed: no update")
+    updates.apply(feed: json(#"{"message": {"id": "m3", "title": "Quiet", "body": "News", "notify": false}}"#))
+    checkEqual(inbox.take(), [], "notify false: it only shows")
+    updates.apply(feed: json(#"""
+    {"version": "9.0.2", "title": "Headroom 9.0.2", "description": "More", "download_url": "https://example.com/Headroom.dmg"}
+    """#))
+    checkEqual(updates.available?.buttons, [], "a download_url outside github.com gives no buttons")
+
+    StubProtocol.stub { _ in nil }
+    await updates.fetch()
+    checkEqual(updates.available?.version, "9.0.2", "no connection: the last answer stays")
+}
+
 Task { @MainActor in
     _ = NSApplication.shared
     testFormatting()
     testParsing()
     testLevels()
     testMenuBar()
+    testMenuBarIcon()
+    testTooltip()
     testAlerts()
     testFailures()
     testHTTP()
     testStatus()
     testUpdates()
+    await testRefresh()
+    await testStatusFetch()
+    await testUpdateFeed()
     UserDefaults(suiteName: suiteName)!.removePersistentDomain(forName: suiteName)
     print(failures == 0 ? "✅ \(checks) checks passed" : "❌ \(failures) of \(checks) checks failed")
     exit(failures == 0 ? 0 : 1)

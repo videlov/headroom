@@ -14,7 +14,7 @@ enum Format {
     }
 
     /// When a limit resets, short, for the popup: "16:40" today, "Fri 08:00" within the next
-    /// six days, "29 Oct, 08:00" after that, so a weekday never stands for two dates.
+    /// six days, "29. Oct at 08:00" after that (en_DE), so a weekday never stands for two dates.
     static func resetShort(_ date: Date, now: Date = Date()) -> String {
         if Calendar.current.isDate(date, inSameDayAs: now) { return shortTime.string(from: date) }
         if date.timeIntervalSince(now) < 6 * 86_400 { return weekdayTime.string(from: date) }

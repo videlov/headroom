@@ -37,22 +37,26 @@ final class UpdateStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let notify: (_ title: String, _ body: String) -> Void
+    private let session: URLSession
 
-    /// `defaults` and `notify` replace UserDefaults.standard and the notifications in tests.
+    /// `defaults`, `notify` and `session` replace UserDefaults.standard, the notifications and
+    /// the network in tests.
     init(defaults: UserDefaults = .standard,
-         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:)) {
+         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:),
+         session: URLSession = HTTP.session) {
         self.defaults = defaults
         self.notify = notify
+        self.session = session
     }
 
     func refresh() {
         Task { await fetch() }
     }
 
-    private func fetch() async {
+    func fetch() async {
         let request = URLRequest(url: AppInfo.updateFeedURL, cachePolicy: .reloadIgnoringLocalCacheData,
                                  timeoutInterval: 15)
-        guard let (data, _) = try? await HTTP.session.data(for: request),
+        guard let (data, _) = try? await session.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             Log.app.notice("Update feed unavailable")
             return

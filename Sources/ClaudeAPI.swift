@@ -4,6 +4,8 @@ import Foundation
 struct ClaudeAPI {
     /// The whole Cookie header as copied from the browser, not just sessionKey.
     let cookie: String
+    /// Tests pass a session that answers from stubs.
+    var session = HTTP.session
 
     enum Failure: Error, Equatable {
         case network                              // no connection, timeout
@@ -84,7 +86,7 @@ struct ClaudeAPI {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await HTTP.session.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             throw Failure.network
         }

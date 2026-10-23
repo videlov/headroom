@@ -69,8 +69,9 @@ final class UsageStore: ObservableObject {
     private let prefs: Preferences
     private let defaults: UserDefaults
     private let notify: (_ title: String, _ body: String) -> Void
+    private let session: URLSession
     private var organization: (cookie: String, id: String)?   // so /api/bootstrap runs once per cookie
-    private var refreshTask: Task<Void, Never>?
+    private(set) var refreshTask: Task<Void, Never>?   // tests await it
     private var refreshID = 0
     private var backoffMinutes = 0
     private var lastSpentMinor: Int?  // extra usage spend at the last refresh
@@ -89,13 +90,15 @@ final class UsageStore: ObservableObject {
     private static let alertThresholds = [25, 50, 75, 90]
     private static let weeklyAlertThresholds = [90, 100]
 
-    /// `defaults`, `cookie` and `notify` replace UserDefaults.standard, the Keychain and the
-    /// notifications in tests.
+    /// `defaults`, `cookie`, `notify` and `session` replace UserDefaults.standard, the Keychain,
+    /// the notifications and the network in tests.
     init(prefs: Preferences, defaults: UserDefaults = .standard, cookie: String? = nil,
-         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:)) {
+         notify: @escaping (_ title: String, _ body: String) -> Void = Notifier.post(title:body:),
+         session: URLSession = HTTP.session) {
         self.prefs = prefs
         self.defaults = defaults
         self.notify = notify
+        self.session = session
         self.cookie = cookie ?? CookieStore.read() ?? ""
         lastAlertThreshold = defaults.integer(forKey: DefaultsKey.lastNotifiedThreshold)
         lastWeeklyAlertThreshold = defaults.integer(forKey: DefaultsKey.lastNotifiedWeeklyThreshold)
@@ -201,7 +204,7 @@ final class UsageStore: ObservableObject {
 
     private func performRefresh() async {
         guard hasCookie else { return }   // the popup asks for one
-        let api = ClaudeAPI(cookie: cookie)
+        let api = ClaudeAPI(cookie: cookie, session: session)
         let org: String
         do {
             org = try await organizationID(api)
